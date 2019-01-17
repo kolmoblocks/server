@@ -1,16 +1,11 @@
-package main
+package server
 
 import (
     "fmt"
 	"net/http"
-	"io/ioutil"
 	"github.com/gorilla/mux"
 	"encoding/json"
-	// "strings"
-	// "strconv"
 	"github.com/gomodule/redigo/redis"
-	"os"
-	"log"
 	"text/template"
 	"io"
 	"bytes"
@@ -208,7 +203,7 @@ func serveRawFromRedis(w http.ResponseWriter, r *http.Request){
 		w.Header().Set("Content-Type", f.Mime)
 	}
 	
-	fmt.Fprintf(w, h.RawData)
+	fmt.Fprint(w, h.RawData)
 
 }
 
@@ -277,26 +272,13 @@ func ping(conn redis.Conn) error {
 }
 
 
-func newRouter() *mux.Router {
+func NewRouter() *mux.Router {
 	r := mux.NewRouter()
 	r.HandleFunc("/upload", upload)
 	// r.HandleFunc("/search", displayJson).Methods("GET")
 	r.HandleFunc("/raw/redis/{cid}", serveRawFromRedis).Methods("GET")
-	r.HandleFunc("/raw/{cid}", serveRawFile).Methods("GET")
+	// r.HandleFunc("/raw/{cid}", serveRawFile).Methods("GET")
 	r.PathPrefix("/").Handler(http.FileServer(http.Dir("build"))) //path to be updated 
 	return r
 }
 
-
-func main() {
-	redisHost := os.Getenv("REDISHOST")
-    redisPort := os.Getenv("REDISPORT")
-    redisAddr := fmt.Sprintf("%s:%s", redisHost, redisPort)
-
-    const maxConnections = 10
-    redisPool = redis.NewPool(func() (redis.Conn, error) {
-		return redis.Dial("tcp", redisAddr)}, maxConnections)
-	r := newRouter()	
-	log.Fatal(http.ListenAndServe(":8080", r))
-
-}
