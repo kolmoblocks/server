@@ -2,23 +2,22 @@ package server
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"text/template"
 
 	"github.com/gomodule/redigo/redis"
 	"github.com/gorilla/mux"
 )
 
-// type Formula struct {
-// 	Mime string `json:"MIME"`
-// 	Size int    `json:"size"`
-// }
+//Formula struct
+type Formula struct {
+	Mime string `json:"MIME"`
+}
 
 func search(w http.ResponseWriter, r *http.Request) {
-	// var f Formula
 	var data string
 	validSearchParams := map[string]bool{"cid": true}
 
@@ -46,24 +45,16 @@ func search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// for { //every key in redis
-	//open connection ->ping
-
-	data, err := redis.String(conn.Do("GET", cid))
+	data, err := redis.String(conn.Do("HGET", cid, "json"))
 	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
+		fmt.Fprint(w, "")
 	}
+
 	fmt.Fprint(w, data)
-
-	// json.Unmarshal([]byte(data), &formula)
-
-	// formula = Formula{}
-
 }
 
 func serveRaw(w http.ResponseWriter, r *http.Request) {
-	// var f Formula
+	var f Formula
 
 	validSearchParams := map[string]bool{"ref": true}
 
@@ -84,45 +75,55 @@ func serveRaw(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := redis.Bytes(conn.Do("GET", ref))
+	rawData, err := redis.Bytes(conn.Do("HGET", ref, "raw"))
+	jsonData, err := redis.Bytes(conn.Do("HGET", ref, "json"))
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
 
-	// json.Unmarshal([]byte(h.JsonData), &f)
-	// if f.Mime != "" {
-	// 	w.Header().Set("Content-Type", f.Mime)
-	// }
+	json.Unmarshal([]byte(jsonData), &f)
 
-	fmt.Fprint(w, data)
+	if f.Mime != "" {
+		w.Header().Set("Content-Type", f.Mime)
+	}
+
+	fmt.Fprint(w, rawData)
 
 }
 
 func upload(w http.ResponseWriter, r *http.Request) {
+
 	switch method := r.Method; method {
 	case "GET":
 		t, err := template.ParseFiles("upload.gtpl")
-
 		if err != nil {
-			http.Error(w, "cannot parse the template file", 500)
+			http.Error(w, "Cannot parse template", 500)
 			return
 		}
-
 		t.Execute(w, nil)
 
 	case "POST":
 
-		file, handler, err := r.FormFile("upload")
-		defer file.Close()
+		jsonFile, _, err := r.FormFile("uploadJson")
+		rawFile, handler, err2 := r.FormFile("uploadRaw")
+		defer jsonFile.Close()
+		defer rawFile.Close()
 
-		if err != nil {
+		if err != nil || err2 != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
 
-		buf := bytes.NewBuffer(nil)
-		_, err = io.Copy(buf, file)
+		jsonBuf := bytes.NewBuffer(nil)
+		rawBuf := bytes.NewBuffer(nil)
+		_, err = io.Copy(jsonBuf, jsonFile)
+		_, err2 = io.Copy(rawBuf, rawFile)
+
+		if err != nil || err2 != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
 
 		conn := redisPool.Get()
 		defer conn.Close()
@@ -132,12 +133,8 @@ func upload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		r.ParseForm()
-		if strings.Join(r.Form["type"], "") == "json" {
-			_, err = conn.Do("SET", handler.Filename, buf.String())
-		} else if strings.Join(r.Form["type"], "") == "raw" {
-			_, err = conn.Do("SET", handler.Filename, buf.Bytes())
-		}
+		_, err = conn.Do("HMSET", handler.Filename, "json", jsonBuf.String(), "raw", rawBuf)
+
 		if err != nil {
 			fmt.Fprint(w, "Insertion FAIL")
 		} else {
@@ -157,7 +154,7 @@ func ping(conn redis.Conn) error {
 	return nil
 }
 
-// NewRouter creates a  new router
+// NewRouter creates a new router
 func NewRouter() *mux.Router {
 	r := mux.NewRouter()
 	r.HandleFunc("/upload", upload)

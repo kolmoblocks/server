@@ -6,12 +6,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/gomodule/redigo/redis"
 	"github.com/kolmoblocks/server"
-)
-
-var (
-	redisPool *redis.Pool
 )
 
 func main() {
