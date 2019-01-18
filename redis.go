@@ -10,6 +10,14 @@ var (
 	redisPool *redis.Pool
 )
 
+func ping(conn redis.Conn) error {
+	_, err := redis.String(conn.Do("PING"))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 //InitRedis initializes redis pool
 func InitRedis(redisAddr string) {
 	redisPool = &redis.Pool{
