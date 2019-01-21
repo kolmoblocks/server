@@ -3,26 +3,87 @@ package server
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
+	"os"
 	"text/template"
+
+	"github.com/gomodule/redigo/redis"
 )
 
-func generateJSON(rawData []byte) Formula {
+func generateFormula(rawData []byte) Formula {
 	var f Formula
-	f.TargetSize = len(rawData)
+	f.Size = len(rawData)
 	h := sha256.New()
 	h.Write(rawData)
-	f.TargetID = base64.URLEncoding.EncodeToString(h.Sum(nil))
+	f.Cids.SHA256 = hex.EncodeToString(h.Sum(nil))
 	f.Mime = http.DetectContentType(rawData)
 
 	return f
 }
 
-func upload(w http.ResponseWriter, r *http.Request) {
+func insertHash(f Formula, raw []byte, c redis.Conn) error {
+	jsonData, err := json.MarshalIndent(&f, "", "\t")
+	_, err = c.Do("HMSET", f.Cids.SHA256, "json", string(jsonData), "raw", raw)
+	if err != nil {
+		return errors.New("Failed to insert" + f.Cids.SHA256)
+	}
+	fmt.Println(f.Cids.SHA256 + " inserted")
+	return nil
+}
+
+//UploadFiles will upload all files to redis given the path
+func UploadFiles(path string) error {
+	var rawFilePath string
+	conn := redisPool.Get()
+	defer conn.Close()
+	if err := ping(conn); err != nil {
+		return errors.New("Connection to redis failed")
+	}
+	fileStat, err := os.Stat(path)
+
+	switch {
+	case err != nil:
+		return err
+	case fileStat.IsDir():
+		files, err := ioutil.ReadDir(path)
+		if err != nil {
+			return errors.New("Unable to read " + path)
+		}
+
+		for _, fi := range files {
+			rawFilePath = path + fi.Name()
+			rawBytes, err := ioutil.ReadFile(rawFilePath)
+			if err != nil {
+				return err
+			}
+
+			f := generateFormula(rawBytes)
+			err = insertHash(f, rawBytes, conn)
+			if err != nil {
+				return err
+			}
+		}
+	default:
+		rawBytes, err := ioutil.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		f := generateFormula(rawBytes)
+		err = insertHash(f, rawBytes, conn)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func uploadThroughBrowser(w http.ResponseWriter, r *http.Request) {
 	switch method := r.Method; method {
 	case "GET":
 		t, err := template.ParseFiles("upload.gtpl")
@@ -57,17 +118,18 @@ func upload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		f := generateJSON(rawBuf.Bytes())
+		f := generateFormula(rawBuf.Bytes())
 		jsonData, err := json.MarshalIndent(&f, "", "\t")
 		if err != nil {
 			return
 		}
-		_, err = conn.Do("HMSET", f.TargetID, "json", string(jsonData), "raw", rawBuf.Bytes())
+		_, err = conn.Do("HMSET", f.Cids.SHA256, "json", string(jsonData), "raw", rawBuf.Bytes())
 
 		if err != nil {
 			fmt.Fprint(w, "Insertion FAIL")
 		} else {
-			fmt.Fprint(w, "OK")
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, string(jsonData))
 		}
 
 	default:
