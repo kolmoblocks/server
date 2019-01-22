@@ -13,7 +13,7 @@ type Formula struct {
 	Size int    `json:"size"`
 }
 
-//Cids struct
+//Hashes struct
 type Hashes struct {
 	SHA256 string `json: "SHA256"`
 }

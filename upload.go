@@ -119,18 +119,12 @@ func uploadThroughBrowser(w http.ResponseWriter, r *http.Request) {
 		}
 
 		f := generateFormula(rawBuf.Bytes())
-		jsonData, err := json.MarshalIndent(&f, "", "\t")
-		if err != nil {
-			return
-		}
-		_, err = conn.Do("HMSET", f.Cids.SHA256, "json", string(jsonData), "raw", rawBuf.Bytes())
+		err = insertHash(f, rawBuf.Bytes(), conn)
 
 		if err != nil {
-			fmt.Fprint(w, "Insertion FAIL")
-		} else {
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, string(jsonData))
+			fmt.Fprint(w, err)
 		}
+		fmt.Fprint(w, f.Cids.SHA256+" inserted")
 
 	default:
 		fmt.Fprintf(w, "Method %s not supported", method)
