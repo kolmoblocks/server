@@ -2,21 +2,12 @@ package main
 
 import (
 	"fmt"
-	"html/template"
 	"log"
 	"net/http"
 	"os"
 
 	"github.com/kolmoblocks/server/kolmoserver/server"
 )
-
-func init() {
-	t, err := template.ParseFiles("upload.gtpl")
-	if err != nil {
-		http.Error(w, "Cannot parse template", 500)
-		return
-	}
-}
 
 func main() {
 

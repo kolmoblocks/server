@@ -5,8 +5,15 @@ api_version: go1
 env: flex
 
 handlers:
+
+- url: /
+  static_files: public/index.html
+  upload: public/index.html
+ 
 - url: /.*
   script: _go_app
+
+  
 
 
 # Update with Redis instance details

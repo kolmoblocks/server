@@ -12,6 +12,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"text/template"
 
 	"github.com/gomodule/redigo/redis"
 )
@@ -39,7 +40,6 @@ func insertHash(f Formula, raw []byte, c redis.Conn) error {
 
 //SendLocalFiles to /upload endpoint
 func SendLocalFiles(targetURL string, path string) error {
-
 	fileStat, err := os.Stat(path)
 	if err != nil {
 		return err
@@ -70,7 +70,6 @@ func SendLocalFiles(targetURL string, path string) error {
 
 		}
 	default:
-
 		fileWriter, err := bodyWriter.CreateFormFile("files", path)
 		if err != nil {
 			return errors.New("Error writing to buffer " + path)
@@ -85,7 +84,6 @@ func SendLocalFiles(targetURL string, path string) error {
 		}
 	}
 	contentType := bodyWriter.FormDataContentType()
-	fmt.Println(contentType)
 	bodyWriter.Close()
 	resp, err := http.Post(targetURL, contentType, bodyBuf)
 	if err != nil {
@@ -104,6 +102,11 @@ func SendLocalFiles(targetURL string, path string) error {
 func upload(w http.ResponseWriter, r *http.Request) {
 	switch method := r.Method; method {
 	case "GET":
+		t, err := template.ParseFiles("upload.gtpl")
+		if err != nil {
+			http.Error(w, "Cannot parse template", 500)
+			return
+		}
 		t.Execute(w, nil)
 	case "POST":
 
