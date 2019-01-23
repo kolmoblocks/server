@@ -24,6 +24,6 @@ func NewRouter() *mux.Router {
 	r.HandleFunc("/upload", uploadThroughBrowser)
 	r.HandleFunc("/search", search).Methods("GET")
 	r.HandleFunc("/raw/{ref}", serveRaw).Methods("GET")
-	r.PathPrefix("/").Handler(http.FileServer(http.Dir("build"))) //path to be updated
+	r.PathPrefix("/").Handler(http.FileServer(http.Dir("public"))) //path to be updated
 	return r
 }
