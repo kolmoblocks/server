@@ -6,7 +6,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-//Formula struct for marshaling/unmarshaling json manifest
+//Manifest struct for marshaling/unmarshaling json manifest
 type Manifest struct {
 	Mime string `json:"MIME"`
 	Cids Hashes `json:"cids"`
