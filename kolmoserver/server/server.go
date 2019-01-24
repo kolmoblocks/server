@@ -6,14 +6,14 @@ import (
 	"github.com/gorilla/mux"
 )
 
-//Formula struct
-type Formula struct {
+//Formula struct for marshaling/unmarshaling json manifest
+type Manifest struct {
 	Mime string `json:"MIME"`
 	Cids Hashes `json:"cids"`
 	Size int    `json:"size"`
 }
 
-//Hashes struct
+//Hashes struct for marshaling/unmarshaling json manifest
 type Hashes struct {
 	SHA256 string `json: "SHA256"`
 }

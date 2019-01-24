@@ -10,6 +10,7 @@ var (
 	redisPool *redis.Pool
 )
 
+//Ping tests the connection to the redis db using PING
 func ping(conn redis.Conn) error {
 	_, err := redis.String(conn.Do("PING"))
 	if err != nil {

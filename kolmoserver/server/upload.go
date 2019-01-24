@@ -17,34 +17,47 @@ import (
 	"github.com/gomodule/redigo/redis"
 )
 
-func generateFormula(rawData []byte) Formula {
-	var f Formula
-	f.Size = len(rawData)
+//generateManifest(rawData []byte) Manifest:
+//	Generates manifest for given []byte and stores in a Manifest struct
+//	Mime type is detected using http.DetectContentType which guesses the type based on the
+//  first 500 bytes of the provided by rawData.
+//  SHA256 hash is generated for rawData and stored in hex.
+func generateManifest(rawData []byte) Manifest {
+	var m Manifest
+	m.Size = len(rawData)
 	h := sha256.New()
 	h.Write(rawData)
-	f.Cids.SHA256 = hex.EncodeToString(h.Sum(nil))
-	f.Mime = http.DetectContentType(rawData)
-
-	return f
+	m.Cids.SHA256 = hex.EncodeToString(h.Sum(nil))
+	m.Mime = http.DetectContentType(rawData)
+	return m
 }
 
-func insertHash(f Formula, raw []byte, c redis.Conn) error {
-	jsonData, err := json.MarshalIndent(&f, "", "\t")
-	_, err = c.Do("HMSET", f.Cids.SHA256, "json", string(jsonData), "raw", raw)
+//insertHash(m Manifest, raw []byte, c redis.Conn) error
+//  Inserts a hash into redis with fields json: Manifest, raw: []byte
+func insertHash(m Manifest, raw []byte, c redis.Conn) error {
+	//Create json string by marshaling Manifest
+	jsonData, err := json.MarshalIndent(&m, "", "\t")
+
+	_, err = c.Do("HMSET", m.Cids.SHA256, "json", string(jsonData), "raw", raw)
 	if err != nil {
-		return errors.New("Failed to insert" + f.Cids.SHA256)
+		return errors.New("Failed to insert" + m.Cids.SHA256)
 	}
-	fmt.Println(f.Cids.SHA256 + " inserted\n")
+
+	fmt.Println(m.Cids.SHA256 + " inserted\n")
 	return nil
 }
 
-//SendLocalFiles to /upload endpoint
+//SendLocalFiles (targetURL string, path string) error:
+//	Sends all file(s) to /upload endpoint through a single POST request.
+// 	All files are wrapped in a formfile which are contained in a multipart form.
 func SendLocalFiles(targetURL string, path string) error {
+	//Check that path is valid
 	fileStat, err := os.Stat(path)
 	if err != nil {
 		return err
 	}
 
+	//Create multipart form and then write all files specified in the path to it
 	bodyBuf := &bytes.Buffer{}
 	bodyWriter := multipart.NewWriter(bodyBuf)
 	switch {
@@ -55,19 +68,21 @@ func SendLocalFiles(targetURL string, path string) error {
 		}
 		for _, fi := range files {
 			filePath := path + fi.Name()
+
 			fh, err := os.Open(filePath)
 			if err != nil {
 				return errors.New("Error opening file at: " + filePath)
 			}
+
 			fileWriter, err := bodyWriter.CreateFormFile("files", filePath)
 			if err != nil {
 				return errors.New("Error writing to buffer " + filePath)
 			}
+
 			_, err = io.Copy(fileWriter, fh)
 			if err != nil {
 				return err
 			}
-
 		}
 	default:
 		fileWriter, err := bodyWriter.CreateFormFile("files", path)
@@ -99,17 +114,21 @@ func SendLocalFiles(targetURL string, path string) error {
 	return nil
 }
 
+//func upload(w http.ResponseWriter, r *http.Request)
+//	Uploads all files in the multipartform provided in a POST request
+
 func upload(w http.ResponseWriter, r *http.Request) {
 	switch method := r.Method; method {
 	case "GET":
+		//GUI interface for optionally uploading files through the browser
 		t, err := template.ParseFiles("upload.gtpl")
 		if err != nil {
 			http.Error(w, "Cannot parse template", 500)
 			return
 		}
 		t.Execute(w, nil)
-	case "POST":
 
+	case "POST":
 		r.ParseMultipartForm(32 << 20) // 32MB is the default used by FormFile
 		fhs := r.MultipartForm.File["files"]
 		buf := bytes.NewBuffer(nil)
@@ -130,12 +149,13 @@ func upload(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Can't connect to redis", 500)
 				return
 			}
-			f := generateFormula(buf.Bytes())
-			err = insertHash(f, buf.Bytes(), conn)
+			//Generates manifest of the uploaded file and inserts it into redis db
+			m := generateManifest(buf.Bytes())
+			err = insertHash(m, buf.Bytes(), conn)
 			if err != nil {
 				fmt.Fprint(w, err)
 			}
-			fmt.Fprint(w, f.Cids.SHA256+" inserted\n")
+			fmt.Fprint(w, m.Cids.SHA256+" inserted\n")
 			buf.Reset()
 		}
 

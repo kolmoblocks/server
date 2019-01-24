@@ -9,8 +9,14 @@ import (
 	"github.com/gorilla/mux"
 )
 
+//serveRaw(w http.ResponseWriter, r *http.Request):
+//	Searches the redis db for the hash matching the provided ref variable.
+// 	The json field of the hash is retrieved and deserialized to find out what the MIME type
+// 	of the raw data is of. Http reponse header "Content-Type" is then set to the MIME type.
+//	The []byte retrieved from the raw field of the hash is then served.
+
 func serveRaw(w http.ResponseWriter, r *http.Request) {
-	var f Formula
+	var m Manifest
 
 	conn := redisPool.Get()
 	defer conn.Close()
@@ -28,10 +34,10 @@ func serveRaw(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.Unmarshal([]byte(jsonData), &f)
+	json.Unmarshal([]byte(jsonData), &m)
 
-	if f.Mime != "" {
-		w.Header().Set("Content-Type", f.Mime)
+	if m.Mime != "" {
+		w.Header().Set("Content-Type", m.Mime)
 	}
 
 	fmt.Fprint(w, rawData)
