@@ -22,6 +22,7 @@ type Hashes struct {
 func NewRouter() *mux.Router {
 	r := mux.NewRouter()
 	r.HandleFunc("/upload", upload)
+	r.HandleFunc("/upload_json", uploadJSON)
 	r.HandleFunc("/search", search).Methods("GET")
 	r.HandleFunc("/raw/{ref}", serveRaw).Methods("GET")
 	r.PathPrefix("/").Handler(http.FileServer(http.Dir("public"))) //path to be updated

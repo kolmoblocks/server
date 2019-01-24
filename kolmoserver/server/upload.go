@@ -12,6 +12,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"strings"
 	"text/template"
 
 	"github.com/gomodule/redigo/redis"
@@ -44,6 +45,37 @@ func insertHash(m Manifest, raw []byte, c redis.Conn) error {
 	}
 
 	fmt.Println(m.Cids.SHA256 + " inserted\n")
+	return nil
+}
+
+func insertJSON(json []byte, c redis.Conn) (string, error) {
+	//Create json string by marshaling Manifest
+	h := sha256.New()
+	h.Write(json)
+	hash := hex.EncodeToString(h.Sum(nil))
+
+	_, err := c.Do("HSET", hash, "json", string(json))
+	if err != nil {
+		return "", errors.New("Failed to insert" + hash)
+	}
+	fmt.Println(hash + " inserted\n")
+	return hash, nil
+}
+
+func validJSON(in []byte) error {
+	var m map[string]interface{}
+	validJSONFields := map[string]bool{"MIME": true, "cids": true,
+		"size": true, "data_expression": true}
+
+	if err := json.Unmarshal(in, &m); err != nil {
+		return errors.New("Input is not JSON")
+	}
+
+	for k := range m {
+		if !validJSONFields[k] && !strings.HasPrefix(k, "data_expression") {
+			return errors.New("Invalid JSON field: " + k)
+		}
+	}
 	return nil
 }
 
@@ -116,7 +148,6 @@ func SendLocalFiles(targetURL string, path string) error {
 
 //func upload(w http.ResponseWriter, r *http.Request)
 //	Uploads all files in the multipartform provided in a POST request
-
 func upload(w http.ResponseWriter, r *http.Request) {
 	switch method := r.Method; method {
 	case "GET":
@@ -156,6 +187,57 @@ func upload(w http.ResponseWriter, r *http.Request) {
 				fmt.Fprint(w, err)
 			}
 			fmt.Fprint(w, m.Cids.SHA256+" inserted\n")
+			buf.Reset()
+		}
+
+	default:
+		fmt.Fprintf(w, "Method %s not supported", method)
+	}
+}
+
+func uploadJSON(w http.ResponseWriter, r *http.Request) {
+	switch method := r.Method; method {
+	case "GET":
+		//GUI interface for optionally uploading files through the browser
+		t, err := template.ParseFiles("uploadJSON.gtpl")
+		if err != nil {
+			http.Error(w, "Cannot parse template", 500)
+			return
+		}
+		t.Execute(w, nil)
+
+	case "POST":
+		r.ParseMultipartForm(32 << 20) // 32MB is the default used by FormFile
+		fhs := r.MultipartForm.File["files"]
+		buf := bytes.NewBuffer(nil)
+		for _, fh := range fhs {
+			file, err := fh.Open()
+			if err != nil {
+				http.Error(w, "Failed to read file", 500)
+				return
+			}
+			_, err = io.Copy(buf, file)
+			if err != nil {
+				http.Error(w, "error writing to buffer", 500)
+				return
+			}
+			conn := redisPool.Get()
+			defer conn.Close()
+			if err := ping(conn); err != nil {
+				http.Error(w, "Can't connect to redis", 500)
+				return
+			}
+			//Generates manifest of the uploaded file and inserts it into redis db
+			if err := validJSON(buf.Bytes()); err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+			hash, err := insertJSON(buf.Bytes(), conn)
+			if err != nil {
+				http.Error(w, err.Error(), 500)
+
+			}
+			fmt.Fprint(w, hash+" inserted\n")
 			buf.Reset()
 		}
 

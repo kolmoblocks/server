@@ -10,7 +10,6 @@ import (
 //search(w http.ResponseWriter, r *http.Request):
 //	Searches for the hash in the redis db matching the given query parameter 'cid'
 //	and returns the manifest of that cid in the form of json.
-
 func search(w http.ResponseWriter, r *http.Request) {
 	var data string
 	validSearchParams := map[string]bool{"cid": true}
