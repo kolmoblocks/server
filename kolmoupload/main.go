@@ -9,15 +9,23 @@ import (
 
 func main() {
 	//Endpoint in webapp for which we are uploading through
-	targetURL := "https://kolmo-228620.appspot.com/upload"
+	uploadURL := "https://kolmo-228620.appspot.com/upload"
+	uploadJSONURL := "https://kolmo-228620.appspot.com/upload_json"
+	rawPathPtr := flag.String("upload", "", "Path to file/folder to be uploaded to redis")
+	jsonPathPtr := flag.String("uploadJSON", "", "Path to file/folder to be uploaded to redis")
 
-	//Set flag -upload and upload specified file/directory to redis db
-	pathPtr := flag.String("upload", "", "Path to file/folder to be uploaded to redis")
 	flag.Parse()
-	if *pathPtr != "" {
-		err := server.SendLocalFiles(targetURL, *pathPtr)
+	if *rawPathPtr != "" {
+		err := server.SendLocalFiles(uploadURL, *rawPathPtr)
 		if err != nil {
-			fmt.Println("Unable to upload files specified at " + *pathPtr)
+			fmt.Println("Unable to upload files specified at " + *rawPathPtr)
+		}
+	}
+	if *jsonPathPtr != "" {
+		err := server.SendLocalFiles(uploadJSONURL, *jsonPathPtr)
+		if err != nil {
+			fmt.Println("Unable to upload files specified at " + *jsonPathPtr)
+
 		}
 	}
 
