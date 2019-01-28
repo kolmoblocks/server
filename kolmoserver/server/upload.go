@@ -62,6 +62,8 @@ func insertJSON(json []byte, c redis.Conn) (string, error) {
 	return hash, nil
 }
 
+//func validJSON(in []byte)
+//	Checks that a []byte is a json and if its fields are valid
 func validJSON(in []byte) error {
 	var m map[string]interface{}
 	validJSONFields := map[string]bool{"MIME": true, "cids": true,
@@ -195,6 +197,8 @@ func upload(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+//func uploadJSON(w http.ResponseWriter, r *http.Request)
+//	Uploads all files in the multipartform provided in a POST request
 func uploadJSON(w http.ResponseWriter, r *http.Request) {
 	switch method := r.Method; method {
 	case "GET":
