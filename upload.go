@@ -164,6 +164,14 @@ func upload(w http.ResponseWriter, r *http.Request) {
 		t.Execute(w, nil)
 
 	case "POST":
+		_, pass, ok := r.BasicAuth()
+
+		if os.Getenv("KOLMOLD_KEY") != pass || !ok {
+			w.Header().Set("WWW-Authenticate", `Basic realm="upload"`)
+			http.Error(w, "Unauthorised", 401)
+			return
+		}
+
 		r.ParseMultipartForm(32 << 20) // 32MB is the default used by FormFile
 		fhs := r.MultipartForm.File["files"]
 		buf := bytes.NewBuffer(nil)
@@ -207,7 +215,7 @@ func uploadJSON(w http.ResponseWriter, r *http.Request) {
 	switch method := r.Method; method {
 	case "GET":
 		//GUI interface for optionally uploading files through the browser
-		t, err := template.ParseFiles("./temapltes/uploadJSON.gtpl")
+		t, err := template.ParseFiles("./templates/uploadJSON.gtpl")
 		if err != nil {
 			http.Error(w, "Cannot parse template", 500)
 			return
@@ -215,6 +223,14 @@ func uploadJSON(w http.ResponseWriter, r *http.Request) {
 		t.Execute(w, nil)
 
 	case "POST":
+		_, pass, ok := r.BasicAuth()
+
+		if os.Getenv("KOLMOLD_KEY") != pass || !ok {
+			w.Header().Set("WWW-Authenticate", `Basic realm="upload"`)
+			http.Error(w, "Unauthorised", 401)
+			return
+		}
+
 		r.ParseMultipartForm(32 << 20) // 32MB is the default used by FormFile
 		fhs := r.MultipartForm.File["files"]
 		buf := bytes.NewBuffer(nil)
