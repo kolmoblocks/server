@@ -22,7 +22,6 @@ func main() {
 	redisAddr := fmt.Sprintf("%s:%s", redisHost, redisPort)
 	log.Printf("connecting to redis at %s", redisAddr)
 	server.InitRedis(redisAddr)
-
 	r := server.NewRouter()
 	log.Fatal(http.ListenAndServe(":8080", r))
 

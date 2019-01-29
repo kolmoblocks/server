@@ -37,14 +37,16 @@ func generateManifest(rawData []byte) Manifest {
 //  Inserts a hash into redis with fields json: Manifest, raw: []byte
 func insertHash(m Manifest, raw []byte, c redis.Conn) error {
 	//Create json string by marshaling Manifest
-	jsonData, err := json.MarshalIndent(&m, "", "\t")
+	jsonData, err := m.ToJSON()
+	if err != nil {
+		return err
+	}
 
 	_, err = c.Do("HMSET", m.Cids.SHA256, "json", string(jsonData), "raw", raw)
 	if err != nil {
 		return errors.New("Failed to insert" + m.Cids.SHA256)
 	}
 
-	fmt.Println(m.Cids.SHA256 + " inserted\n")
 	return nil
 }
 
@@ -154,7 +156,7 @@ func upload(w http.ResponseWriter, r *http.Request) {
 	switch method := r.Method; method {
 	case "GET":
 		//GUI interface for optionally uploading files through the browser
-		t, err := template.ParseFiles("../../templates/upload.gtpl")
+		t, err := template.ParseFiles("./templates/upload.gtpl")
 		if err != nil {
 			http.Error(w, "Cannot parse template", 500)
 			return
@@ -194,10 +196,12 @@ func upload(w http.ResponseWriter, r *http.Request) {
 			m := generateManifest(buf.Bytes())
 			err = insertHash(m, buf.Bytes(), conn)
 			if err != nil {
-				fmt.Fprint(w, err)
+				http.Error(w, "failed to set key in redis", 500)
+				return
 			}
-			fmt.Fprint(w, m.Cids.SHA256+" inserted\n")
-			buf.Reset()
+
+			serialized, _ := m.ToJSON()
+			w.Write(serialized)
 		}
 
 	default:
@@ -211,7 +215,7 @@ func uploadJSON(w http.ResponseWriter, r *http.Request) {
 	switch method := r.Method; method {
 	case "GET":
 		//GUI interface for optionally uploading files through the browser
-		t, err := template.ParseFiles("../../templates/uploadJSON.gtpl")
+		t, err := template.ParseFiles("./templates/uploadJSON.gtpl")
 		if err != nil {
 			http.Error(w, "Cannot parse template", 500)
 			return
