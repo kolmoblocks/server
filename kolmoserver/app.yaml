@@ -1,4 +1,3 @@
-#specify the runtime e.g. go,node,java,.NET etc
 runtime: go
 api_version: go1
 
@@ -20,4 +19,4 @@ env_variables:
 
   # Update with Redis instance network name
 network:
-  name: default
+  name: kolmold-vpc
