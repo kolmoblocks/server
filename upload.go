@@ -12,7 +12,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
-	"strings"
 	"text/template"
 
 	"github.com/gomodule/redigo/redis"
@@ -76,7 +75,7 @@ func validJSON(in []byte) error {
 	}
 
 	for k := range m {
-		if !validJSONFields[k] && !strings.HasPrefix(k, "data_expression") {
+		if !validJSONFields[k] {
 			return errors.New("Invalid JSON field: " + k)
 		}
 	}
