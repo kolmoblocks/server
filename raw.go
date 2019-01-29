@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	"github.com/gomodule/redigo/redis"
@@ -40,6 +39,6 @@ func serveRaw(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", m.Mime)
 	}
 
-	fmt.Fprint(w, rawData)
+	w.Write(rawData)
 
 }
