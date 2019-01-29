@@ -49,35 +49,27 @@ func insertHash(m Manifest, raw []byte, c redis.Conn) error {
 	return nil
 }
 
-func insertJSON(json []byte, c redis.Conn) (string, error) {
+func insertJSON(j []byte, c redis.Conn) (string, error) {
 	//Create json string by marshaling Manifest
-	h := sha256.New()
-	h.Write(json)
-	hash := hex.EncodeToString(h.Sum(nil))
-
-	_, err := c.Do("HSET", hash, "json", string(json))
+	var m Manifest
+	json.Unmarshal(j, &m)
+	_, err := c.Do("HSET", m.Cids.SHA256, "json", string(j))
 	if err != nil {
-		return "", errors.New("Failed to insert" + hash)
+		return "", errors.New("Failed to insert" + m.Cids.SHA256)
 	}
-	fmt.Println(hash + " inserted\n")
-	return hash, nil
+	fmt.Println(m.Cids.SHA256 + " inserted\n")
+	return m.Cids.SHA256, nil
 }
 
 //func validJSON(in []byte)
 //	Checks that a []byte is a json and if its fields are valid
 func validJSON(in []byte) error {
 	var m map[string]interface{}
-	validJSONFields := map[string]bool{"MIME": true, "cids": true,
-		"size": true, "data_expression": true}
-
 	if err := json.Unmarshal(in, &m); err != nil {
 		return errors.New("Input is not JSON")
 	}
-
-	for k := range m {
-		if !validJSONFields[k] {
-			return errors.New("Invalid JSON field: " + k)
-		}
+	if m["cids"] == nil {
+		return errors.New("JSON does not include cids field")
 	}
 	return nil
 }
