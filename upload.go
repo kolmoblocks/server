@@ -154,7 +154,7 @@ func upload(w http.ResponseWriter, r *http.Request) {
 	switch method := r.Method; method {
 	case "GET":
 		//GUI interface for optionally uploading files through the browser
-		t, err := template.ParseFiles("upload.gtpl")
+		t, err := template.ParseFiles("../../templates/upload.gtpl")
 		if err != nil {
 			http.Error(w, "Cannot parse template", 500)
 			return
@@ -203,7 +203,7 @@ func uploadJSON(w http.ResponseWriter, r *http.Request) {
 	switch method := r.Method; method {
 	case "GET":
 		//GUI interface for optionally uploading files through the browser
-		t, err := template.ParseFiles("uploadJSON.gtpl")
+		t, err := template.ParseFiles("../../templates/uploadJSON.gtpl")
 		if err != nil {
 			http.Error(w, "Cannot parse template", 500)
 			return

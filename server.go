@@ -23,8 +23,7 @@ func NewRouter() *mux.Router {
 	r.HandleFunc("/upload_json", uploadJSON)
 	r.HandleFunc("/search", search).Methods("GET")
 	r.HandleFunc("/raw/{ref}", serveRaw).Methods("GET")
-	r.HandleFunc("/", home) //path to be updated
-	// r.PathPrefix("/").Handler(http.FileServer(http.Dir("public")))
+	r.PathPrefix("/").Handler(http.FileServer(http.Dir("public")))
 
 	return r
 }
