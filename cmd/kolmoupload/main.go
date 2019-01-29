@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/kolmoblocks/server/kolmoserver/server"
+	"github.com/kolmoblocks/server"
 )
 
 func main() {

@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/kolmoblocks/server/kolmoserver/server"
+	"github.com/kolmoblocks/server"
 )
 
 func main() {
