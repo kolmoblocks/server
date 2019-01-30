@@ -1,0 +1,3 @@
+[submodule "kolmojs"]
+	path = kolmojs
+	url = git@github.com:kolmoblocks/kolmojs

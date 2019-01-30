@@ -15,6 +15,8 @@ import (
 //	The []byte retrieved from the raw field of the hash is then served.
 
 func serveRaw(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	var m Manifest
 
 	conn := redisPool.Get()
