@@ -4,10 +4,8 @@ api_version: go1
 env: flex
 
 handlers:
-
-- url: /
-  static_files: public/index.html
-  upload: public/index.html
+- url: /tour
+  static_dir: 'kolmojs/build'
  
 - url: /.*
   script: _go_app

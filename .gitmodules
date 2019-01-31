@@ -1,3 +1,3 @@
 [submodule "kolmojs"]
-	path = kolmojs
+	path = gcloud/kolmojs
 	url = git@github.com:kolmoblocks/kolmojs

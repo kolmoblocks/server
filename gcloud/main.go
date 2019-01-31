@@ -24,5 +24,4 @@ func main() {
 	server.InitRedis(redisAddr)
 	r := server.NewRouter()
 	log.Fatal(http.ListenAndServe(":8080", r))
-
 }

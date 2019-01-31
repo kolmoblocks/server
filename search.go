@@ -12,7 +12,6 @@ import (
 //	and returns the manifest of that cid in the form of json.
 func search(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	var data string
 	validSearchParams := map[string]bool{"cid": true}
 
 	r.ParseForm()
@@ -40,9 +39,10 @@ func search(w http.ResponseWriter, r *http.Request) {
 	//Sets content type in http header and retrieves json field of hash in redis db
 	w.Header().Set("Content-Type", "application/json")
 	cid := r.FormValue("cid")
-	data, err := redis.String(conn.Do("HGET", cid, "json"))
+	data, err := redis.Bytes(conn.Do("HGET", cid, "json"))
 	if err != nil {
-		fmt.Fprint(w, "")
+		http.Error(w, "data object not found", 404)
+		return
 	}
-	fmt.Fprint(w, data)
+	w.Write(data)
 }
