@@ -27,7 +27,7 @@ func generateManifest(rawData []byte) Manifest {
 	m.Size = len(rawData)
 	h := sha256.New()
 	h.Write(rawData)
-	m.Cids.SHA256 = hex.EncodeToString(h.Sum(nil))
+	m.Doi.SHA256 = hex.EncodeToString(h.Sum(nil))
 	m.Mime = http.DetectContentType(rawData)
 	return m
 }
@@ -41,9 +41,9 @@ func insertHash(m Manifest, raw []byte, c redis.Conn) error {
 		return err
 	}
 
-	_, err = c.Do("HMSET", m.Cids.SHA256, "json", string(jsonData), "raw", raw)
+	_, err = c.Do("HMSET", m.Doi.SHA256, "json", string(jsonData), "raw", raw)
 	if err != nil {
-		return errors.New("Failed to insert" + m.Cids.SHA256)
+		return errors.New("Failed to insert" + m.Doi.SHA256)
 	}
 
 	return nil
@@ -53,12 +53,12 @@ func insertJSON(j []byte, c redis.Conn) (string, error) {
 	//Create json string by marshaling Manifest
 	var m Manifest
 	json.Unmarshal(j, &m)
-	_, err := c.Do("HSET", m.Cids.SHA256, "json", string(j))
+	_, err := c.Do("HSET", m.Doi.SHA256, "json", string(j))
 	if err != nil {
-		return "", errors.New("Failed to insert" + m.Cids.SHA256)
+		return "", errors.New("Failed to insert" + m.Doi.SHA256)
 	}
-	fmt.Println(m.Cids.SHA256 + " inserted\n")
-	return m.Cids.SHA256, nil
+	fmt.Println(m.Doi.SHA256 + " inserted\n")
+	return m.Doi.SHA256, nil
 }
 
 //func validJSON(in []byte)
@@ -68,8 +68,8 @@ func validJSON(in []byte) error {
 	if err := json.Unmarshal(in, &m); err != nil {
 		return errors.New("Input is not JSON")
 	}
-	if m["cids"] == nil {
-		return errors.New("JSON does not include cids field")
+	if m["doi"] == nil {
+		return errors.New("JSON does not include doi data")
 	}
 	return nil
 }

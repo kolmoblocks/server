@@ -8,11 +8,11 @@ import (
 )
 
 //search(w http.ResponseWriter, r *http.Request):
-//	Searches for the hash in the redis db matching the given query parameter 'cid'
-//	and returns the manifest of that cid in the form of json.
+//	Searches for the hash in the redis db matching the given query parameter 'doi'
+//	and returns the manifest of that doi in the form of json.
 func search(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	validSearchParams := map[string]bool{"cid": true}
+	validSearchParams := map[string]bool{"doi": true}
 
 	r.ParseForm()
 
@@ -38,8 +38,8 @@ func search(w http.ResponseWriter, r *http.Request) {
 
 	//Sets content type in http header and retrieves json field of hash in redis db
 	w.Header().Set("Content-Type", "application/json")
-	cid := r.FormValue("cid")
-	data, err := redis.Bytes(conn.Do("HGET", cid, "json"))
+	doi := r.FormValue("doi")
+	data, err := redis.Bytes(conn.Do("HGET", doi, "json"))
 	if err != nil {
 		http.Error(w, "data object not found", 404)
 		return

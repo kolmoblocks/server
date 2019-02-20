@@ -10,7 +10,7 @@ import (
 //Manifest struct for marshaling/unmarshaling json manifest
 type Manifest struct {
 	Mime string `json:"MIME"`
-	Cids Hashes `json:"cids"`
+	Doi Hashes 	`json:"doi"`
 	Size int    `json:"size"`
 }
 
@@ -20,7 +20,7 @@ func (m Manifest) ToJSON() ([]byte, error) {
 
 //Hashes struct for marshaling/unmarshaling json manifest
 type Hashes struct {
-	SHA256 string `json: "SHA256"`
+	SHA256 string `json:"SHA256"`
 }
 
 // NewRouter creates a new router
