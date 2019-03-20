@@ -12,6 +12,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"strings"
 	"text/template"
 
 	"github.com/gomodule/redigo/redis"
@@ -27,7 +28,7 @@ func generateManifest(rawData []byte) Manifest {
 	m.Size = len(rawData)
 	h := sha256.New()
 	h.Write(rawData)
-	m.Doi.SHA256 = hex.EncodeToString(h.Sum(nil))
+	m.Doi.SHA256 = strings.ToUpper(hex.EncodeToString(h.Sum(nil)))
 	m.Mime = http.DetectContentType(rawData)
 	return m
 }
@@ -241,6 +242,91 @@ func uploadJSON(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprint(w, hash+" inserted\n")
 			buf.Reset()
 		}
+
+	default:
+		fmt.Fprintf(w, "Method %s not supported", method)
+	}
+}
+
+func uploadZstd(w http.ResponseWriter, r *http.Request) {
+
+	switch method := r.Method; method {
+	case "GET":
+
+		//GUI interface for uploading file
+		t, err := template.ParseFiles("./templates/uploadZstd.gtpl")
+		if err != nil {
+			http.Error(w, "Cannot parse template", 500)
+			return
+		}
+		t.Execute(w, nil)
+
+	case "POST":
+
+		// check redis connected
+		conn := redisPool.Get()
+		defer conn.Close()
+		if err := ping(conn); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+
+		// check wasm:unzstd stored in server
+		data, err := conn.Do("hgetall", "wasm:unzstd")
+		if err != nil {
+			http.Error(w, fmt.Sprintf("wasm:unzstd not found in server %s", err.Error()), 404)
+			return
+		}
+
+		var e error
+		smData, err := redis.StringMap(data, e)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("error data format for wasm:unzstd %s", err.Error()), 500)
+			return
+		}
+
+		doi, present := smData["doi"]
+		if !present {
+			http.Error(w, "can't find 'doi' field for wasm:unzstd", 500)
+			return
+		}
+
+		glue, present := smData["glue"]
+
+		http.Error(w, fmt.Sprintf("doi={%s} glue={%s}", doi, glue), 500)
+		return
+
+		/*r.ParseMultipartForm(32 << 20) // 32MB is the default used by FormFile
+		fhs := r.MultipartForm.File["files"]
+		buf := bytes.NewBuffer(nil)
+		for _, fh := range fhs {
+			file, err := fh.Open()
+			if err != nil {
+				http.Error(w, "Failed to read file", 500)
+				return
+			}
+			_, err = io.Copy(buf, file)
+			if err != nil {
+				http.Error(w, "error writing to buffer", 500)
+				return
+			}
+			conn := redisPool.Get()
+			defer conn.Close()
+			if err := ping(conn); err != nil {
+				http.Error(w, "Can't connect to redis", 500)
+				return
+			}
+			//Generates manifest of the uploaded file and inserts it into redis db
+			m := generateManifest(buf.Bytes())
+			err = insertHash(m, buf.Bytes(), conn)
+			if err != nil {
+				http.Error(w, "failed to set key in redis", 500)
+				return
+			}
+
+			serialized, _ := m.ToJSON()
+			w.Write(serialized)
+		}*/
 
 	default:
 		fmt.Fprintf(w, "Method %s not supported", method)

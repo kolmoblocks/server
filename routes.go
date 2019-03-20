@@ -10,8 +10,8 @@ import (
 //Manifest struct for marshaling/unmarshaling json manifest
 type Manifest struct {
 	Mime string `json:"MIME"`
-	Doi Hashes 	`json:"doi"`
 	Size int    `json:"size"`
+	Doi  Hashes `json:"doi"`
 }
 
 func (m Manifest) ToJSON() ([]byte, error) {
@@ -25,11 +25,20 @@ type Hashes struct {
 
 // NewRouter creates a new router
 func NewRouter() *mux.Router {
+
 	r := mux.NewRouter()
+
+	r.HandleFunc("/upload/zstd", uploadZstd)
+
 	r.HandleFunc("/upload", upload)
+
 	r.HandleFunc("/upload_json", uploadJSON)
+
 	r.HandleFunc("/search", search).Methods("GET")
+
 	r.HandleFunc("/raw/{ref}", serveRaw).Methods("GET")
+
 	r.PathPrefix("/").Handler(http.FileServer(http.Dir("kolmojs/build")))
+
 	return r
 }

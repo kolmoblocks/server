@@ -24,5 +24,24 @@ Installation
 
 Compile with:
 
+
     go install 
 
+
+
+```
+  KOLMOLD_GATEWAY="http://localhost:8080" kolmo-add-file files/file1.txt
+```
+
+
+```
+cd gcloud
+go run main.go
+```
+
+
+to start redis:
+```
+redis-server
+
+```
