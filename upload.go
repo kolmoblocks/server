@@ -16,6 +16,7 @@ import (
 	"text/template"
 
 	"github.com/gomodule/redigo/redis"
+	"github.com/valyala/gozstd"
 )
 
 //generateManifest(rawData []byte) Manifest:
@@ -285,21 +286,19 @@ func uploadZstd(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		doi, present := smData["doi"]
+		wasmDoi, present := smData["wasmDoi"]
 		if !present {
-			http.Error(w, "can't find 'doi' field for wasm:unzstd", 500)
+			http.Error(w, "can't find 'wasmDoi' field for wasm:unzstd", 500)
 			return
 		}
 
-		glue, present := smData["glue"]
+		glueDoi, present := smData["glueDoi"]
 
-		http.Error(w, fmt.Sprintf("doi={%s} glue={%s}", doi, glue), 500)
-		return
-
-		/*r.ParseMultipartForm(32 << 20) // 32MB is the default used by FormFile
+		r.ParseMultipartForm(32 << 20) // 32MB is the default used by FormFile
 		fhs := r.MultipartForm.File["files"]
 		buf := bytes.NewBuffer(nil)
 		for _, fh := range fhs {
+
 			file, err := fh.Open()
 			if err != nil {
 				http.Error(w, "Failed to read file", 500)
@@ -310,23 +309,39 @@ func uploadZstd(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "error writing to buffer", 500)
 				return
 			}
-			conn := redisPool.Get()
-			defer conn.Close()
-			if err := ping(conn); err != nil {
-				http.Error(w, "Can't connect to redis", 500)
-				return
-			}
-			//Generates manifest of the uploaded file and inserts it into redis db
-			m := generateManifest(buf.Bytes())
-			err = insertHash(m, buf.Bytes(), conn)
+
+			// compress data
+			compressedData := gozstd.Compress(nil, buf.Bytes())
+
+			// generate manifest for compressed data!
+			compressedDataManifest := generateManifest(compressedData)
+
+			// upload compressed data and manifest to server
+			err = insertHash(compressedDataManifest, compressedData, conn)
 			if err != nil {
-				http.Error(w, "failed to set key in redis", 500)
+				http.Error(w, fmt.Sprintf("failed to insert compressed data and manifest to storage %s", err.Error()), 500)
 				return
 			}
 
-			serialized, _ := m.ToJSON()
-			w.Write(serialized)
-		}*/
+			// generate manifest for data from uploaded file
+			dataManifest := generateManifest(buf.Bytes())
+
+			params := map[string]string{
+				"Arg1": compressedDataManifest.Doi.SHA256,
+			}
+
+			dataManifest.AddFormula(NewFormula(wasmDoi, glueDoi, params))
+
+			// upload manifest to server
+			m, _ := dataManifest.ToJSON()
+			_, err = insertJSON(m, conn)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("failed to insert data manifest to storage %s", err.Error()), 500)
+				return
+			}
+
+			http.Error(w, string(m), 500)
+		}
 
 	default:
 		fmt.Fprintf(w, "Method %s not supported", method)
