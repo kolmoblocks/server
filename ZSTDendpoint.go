@@ -80,3 +80,65 @@ func uploadZstd(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Method %s not supported", method)
 	}
 }
+
+func updateZstdDictionary(w http.ResponseWriter, r *http.Request) {
+
+	switch method := r.Method; method {
+
+	case "GET":
+
+		wasmDoi, _, err := GetWasmInfo("wasm:unzstd")
+		if err != nil {
+			http.Error(w, fmt.Sprintf("error geting information for wasm %s", err.Error()), 500)
+			return
+		}
+
+		manifests, err := GetManifestsWithActorDoi(wasmDoi)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("error geting manifests for wasm %s", err.Error()), 500)
+			return
+		}
+
+		var allDecompressedData [][]byte
+
+		for _, manifest := range manifests {
+
+			for _, formula := range manifest.Formulas {
+
+				cd, CDpresent := formula.Parameters["CompressedData"]
+				_, Dpresent := formula.Parameters["Dictionary"]
+
+				if CDpresent && !Dpresent {
+
+					rawData, err := GetDataByDoi(cd.Doi.SHA256)
+					if err != nil {
+						http.Error(w, fmt.Sprintf("error (%s) getting raw data for %s", err.Error(), manifest.Doi.SHA256), 500)
+						return
+					}
+
+					if 0 != len(rawData) {
+
+						decData, err := gozstd.Decompress(nil, rawData)
+						if err != nil {
+							http.Error(w, fmt.Sprintf("error (%s) decompressing data for %s", err.Error(), cd.Doi.SHA256), 500)
+							return
+						}
+
+						allDecompressedData = append(allDecompressedData, decData)
+
+						w.Write([]byte(fmt.Sprintf("%s : %v -> %v\n", cd.Doi.SHA256, len(rawData), len(decData))))
+
+					}
+				}
+			}
+
+		}
+
+	case "POST":
+
+		w.Write([]byte("post"))
+
+	default:
+		fmt.Fprintf(w, "Method %s not supported", method)
+	}
+}

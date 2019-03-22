@@ -31,7 +31,7 @@ func InitRedis(redisAddr string) {
 }
 
 // GetWasmInfo for getting information about wasm from storage
-func GetWasmInfo(wasmName string) (string, string, error) {
+func GetWasmInfo(wasmName string) (wasmDoi string, glueDoi string, err error) {
 	connection := redisPool.Get()
 	defer connection.Close()
 	if err := ping(connection); err != nil {
@@ -54,9 +54,26 @@ func GetWasmInfo(wasmName string) (string, string, error) {
 		return "", "", fmt.Errorf("can't find 'wasmDoi' field for %s", wasmName)
 	}
 
-	glueDoi, present := smData["glueDoi"]
+	glueDoi, _ = smData["glueDoi"]
 
 	return wasmDoi, glueDoi, nil
+}
+
+// GetDataByDoi for getting raw data from storage by doi
+func GetDataByDoi(doi string) (rawData []byte, err error) {
+
+	connection := redisPool.Get()
+	defer connection.Close()
+	if err := ping(connection); err != nil {
+		return nil, fmt.Errorf("error check connection with storage %s", err.Error())
+	}
+
+	data, err := redis.Bytes(connection.Do("hget", doi, "raw"))
+	if err != nil {
+		return nil, fmt.Errorf("data object not found %s", err.Error())
+	}
+
+	return data, nil
 }
 
 // InsertDataWithManifest for insertion to storage manifest and data with description
@@ -156,4 +173,74 @@ func AddFormulaToManifest(manifest Manifest, formula Formula, description string
 	}
 
 	return &existingManifest, nil
+}
+
+// GetAllManifests for getting all manifests from storage
+func GetAllManifests() (manifests []Manifest, err error) {
+
+	connection := redisPool.Get()
+	defer connection.Close()
+	if err := ping(connection); err != nil {
+		return nil, fmt.Errorf("error check connection with storage %s", err.Error())
+	}
+
+	data, err := connection.Do("keys", "*")
+	if err != nil {
+		return nil, fmt.Errorf("error execution 'keys *' %s", err.Error())
+	}
+
+	var e error
+	keys, _ := redis.Strings(data, e)
+
+	for _, key := range keys {
+
+		rawMan, err := connection.Do("hget", key, "manifest")
+
+		if nil == err {
+
+			strMan, err := redis.String(rawMan, e)
+
+			if nil == err {
+
+				var manifest Manifest
+
+				err = json.Unmarshal([]byte(strMan), &manifest)
+
+				if nil == err {
+					manifests = append(manifests, manifest)
+				}
+
+			}
+		}
+
+	}
+
+	return manifests, nil
+}
+
+// GetManifestsWithActorDoi for getting manifests from storage with given actor doi
+func GetManifestsWithActorDoi(actorDoi string) (manifests []Manifest, err error) {
+
+	allManifests, err := GetAllManifests()
+	if err != nil {
+		return nil, fmt.Errorf("failed get all manifests %s", err.Error())
+	}
+
+	for _, manifest := range allManifests {
+
+		if 0 != len(manifest.Formulas) {
+
+			for _, formula := range manifest.Formulas {
+
+				if actorDoi == formula.Actor["wasm"].Doi.SHA256 {
+
+					manifests = append(manifests, manifest)
+					continue
+				}
+			}
+		}
+
+	}
+
+	return manifests, nil
 }
