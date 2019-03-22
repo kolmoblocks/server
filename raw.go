@@ -8,13 +8,8 @@ import (
 	"github.com/gorilla/mux"
 )
 
-//serveRaw(w http.ResponseWriter, r *http.Request):
-//	Searches the redis db for the hash matching the provided ref variable.
-// 	The json field of the hash is retrieved and deserialized to find out what the MIME type
-// 	of the raw data is of. Http reponse header "Content-Type" is then set to the MIME type.
-//	The []byte retrieved from the raw field of the hash is then served.
-
-func serveRaw(w http.ResponseWriter, r *http.Request) {
+// downloadRaw
+func downloadRaw(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	var m Manifest
@@ -28,7 +23,7 @@ func serveRaw(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
 	rawData, err := redis.Bytes(conn.Do("HGET", vars["ref"], "raw"))
-	jsonData, err := redis.Bytes(conn.Do("HGET", vars["ref"], "json"))
+	jsonData, err := redis.Bytes(conn.Do("HGET", vars["ref"], "manifest"))
 
 	if err != nil {
 		http.Error(w, err.Error(), 500)

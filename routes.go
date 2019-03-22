@@ -82,7 +82,7 @@ func NewRouter() *mux.Router {
 
 	r.HandleFunc("/search", search).Methods("GET")
 
-	r.HandleFunc("/raw/{ref}", serveRaw).Methods("GET")
+	r.HandleFunc("/raw/{ref}", downloadRaw).Methods("GET")
 
 	r.PathPrefix("/").Handler(http.FileServer(http.Dir("kolmojs/build")))
 
