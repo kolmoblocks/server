@@ -2,7 +2,6 @@ package server
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,51 +10,7 @@ import (
 	"net/http"
 	"os"
 	"text/template"
-
-	"github.com/gomodule/redigo/redis"
 )
-
-//insertHash(m Manifest, raw []byte, c redis.Conn) error
-//  Inserts a hash into redis with fields json: Manifest, raw: []byte
-func insertHash(m Manifest, raw []byte, c redis.Conn, description string) error {
-	//Create json string by marshaling Manifest
-	jsonData, err := m.ToJSON()
-	if err != nil {
-		return err
-	}
-
-	_, err = c.Do("HMSET", m.Doi.SHA256, "manifest", string(jsonData), "raw", raw, "description", description)
-	if err != nil {
-		return errors.New("Failed to insert" + m.Doi.SHA256)
-	}
-
-	return nil
-}
-
-func insertJSON(j []byte, c redis.Conn) (string, error) {
-	//Create json string by marshaling Manifest
-	var m Manifest
-	json.Unmarshal(j, &m)
-	_, err := c.Do("HSET", m.Doi.SHA256, "json", string(j))
-	if err != nil {
-		return "", errors.New("Failed to insert" + m.Doi.SHA256)
-	}
-	fmt.Println(m.Doi.SHA256 + " inserted\n")
-	return m.Doi.SHA256, nil
-}
-
-//func validJSON(in []byte)
-//	Checks that a []byte is a json and if its fields are valid
-func validJSON(in []byte) error {
-	var m map[string]interface{}
-	if err := json.Unmarshal(in, &m); err != nil {
-		return errors.New("Input is not JSON")
-	}
-	if m["doi"] == nil {
-		return errors.New("JSON does not include doi data")
-	}
-	return nil
-}
 
 //SendLocalFiles (targetURL string, path string) error:
 //	Sends all file(s) to /upload endpoint through a single POST request.
@@ -160,69 +115,15 @@ func upload(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			//Generates manifest of the uploaded file and inserts it into redis db
-			m := CreateManifestForRawData(buf.Bytes())
-			err = insertHash(m, buf.Bytes(), conn, fh.Filename)
+			manifest := CreateManifestForRawData(buf.Bytes())
+			err = InsertDataWithManifest(buf.Bytes(), manifest, fh.Filename)
 			if err != nil {
 				http.Error(w, "failed to set key in redis", 500)
 				return
 			}
 
-			serialized, _ := m.ToJSON()
+			serialized, _ := manifest.ToJSON()
 			w.Write(serialized)
-		}
-
-	default:
-		fmt.Fprintf(w, "Method %s not supported", method)
-	}
-}
-
-//func uploadJSON(w http.ResponseWriter, r *http.Request)
-//	Uploads all files in the multipartform provided in a POST request
-func uploadJSON(w http.ResponseWriter, r *http.Request) {
-	switch method := r.Method; method {
-	case "GET":
-		//GUI interface for optionally uploading files through the browser
-		t, err := template.ParseFiles("./templates/uploadJSON.gtpl")
-		if err != nil {
-			http.Error(w, "Cannot parse template", 500)
-			return
-		}
-		t.Execute(w, nil)
-
-	case "POST":
-
-		r.ParseMultipartForm(32 << 20) // 32MB is the default used by FormFile
-		fhs := r.MultipartForm.File["files"]
-		buf := bytes.NewBuffer(nil)
-		for _, fh := range fhs {
-			file, err := fh.Open()
-			if err != nil {
-				http.Error(w, "Failed to read file", 500)
-				return
-			}
-			_, err = io.Copy(buf, file)
-			if err != nil {
-				http.Error(w, "error writing to buffer", 500)
-				return
-			}
-			conn := redisPool.Get()
-			defer conn.Close()
-			if err := ping(conn); err != nil {
-				http.Error(w, "Can't connect to redis", 500)
-				return
-			}
-			//Generates manifest of the uploaded file and inserts it into redis db
-			if err := validJSON(buf.Bytes()); err != nil {
-				http.Error(w, err.Error(), 500)
-				return
-			}
-			hash, err := insertJSON(buf.Bytes(), conn)
-			if err != nil {
-				http.Error(w, err.Error(), 500)
-
-			}
-			fmt.Fprint(w, hash+" inserted\n")
-			buf.Reset()
 		}
 
 	default:
