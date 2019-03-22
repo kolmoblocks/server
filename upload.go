@@ -2,8 +2,6 @@ package server
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,27 +10,10 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
-	"strings"
 	"text/template"
 
 	"github.com/gomodule/redigo/redis"
-	"github.com/valyala/gozstd"
 )
-
-//generateManifest(rawData []byte) Manifest:
-//	Generates manifest for given []byte and stores in a Manifest struct
-//	Mime type is detected using http.DetectContentType which guesses the type based on the
-//  first 500 bytes of the provided by rawData.
-//  SHA256 hash is generated for rawData and stored in hex.
-func generateManifest(rawData []byte) Manifest {
-	var m Manifest
-	m.Size = len(rawData)
-	h := sha256.New()
-	h.Write(rawData)
-	m.Doi.SHA256 = strings.ToUpper(hex.EncodeToString(h.Sum(nil)))
-	m.Mime = http.DetectContentType(rawData)
-	return m
-}
 
 //insertHash(m Manifest, raw []byte, c redis.Conn) error
 //  Inserts a hash into redis with fields json: Manifest, raw: []byte
@@ -179,7 +160,7 @@ func upload(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			//Generates manifest of the uploaded file and inserts it into redis db
-			m := generateManifest(buf.Bytes())
+			m := CreateManifestForRawData(buf.Bytes())
 			err = insertHash(m, buf.Bytes(), conn, fh.Filename)
 			if err != nil {
 				http.Error(w, "failed to set key in redis", 500)
@@ -242,77 +223,6 @@ func uploadJSON(w http.ResponseWriter, r *http.Request) {
 			}
 			fmt.Fprint(w, hash+" inserted\n")
 			buf.Reset()
-		}
-
-	default:
-		fmt.Fprintf(w, "Method %s not supported", method)
-	}
-}
-
-func uploadZstd(w http.ResponseWriter, r *http.Request) {
-
-	switch method := r.Method; method {
-	case "GET":
-
-		//GUI interface for uploading file
-		t, err := template.ParseFiles("./templates/uploadZstd.gtpl")
-		if err != nil {
-			http.Error(w, "Cannot parse template", 500)
-			return
-		}
-		t.Execute(w, nil)
-
-	case "POST":
-
-		wasmDoi, glueDoi, err := GetWasmInfo("wasm:unzstd")
-		if err != nil {
-			http.Error(w, fmt.Sprintf("error geting information for wasm %s", err.Error()), 500)
-			return
-		}
-
-		r.ParseMultipartForm(32 << 20) // 32MB is the default used by FormFile
-		fhs := r.MultipartForm.File["files"]
-		for _, fh := range fhs {
-
-			buf := bytes.NewBuffer(nil)
-
-			file, err := fh.Open()
-			if err != nil {
-				http.Error(w, "Failed to read file", 500)
-				return
-			}
-			_, err = io.Copy(buf, file)
-			if err != nil {
-				http.Error(w, "error writing to buffer", 500)
-				return
-			}
-
-			// 1. compress data by ZSTD and insert it to storage with manifest
-			compressedData := gozstd.Compress(nil, buf.Bytes())
-			compressedDataManifest := generateManifest(compressedData)
-			err = InsertDataWithManifest(compressedData, compressedDataManifest, fmt.Sprintf("%s compressed by ZSTD", fh.Filename))
-			if err != nil {
-				http.Error(w, fmt.Sprintf("failed to insert compressed data and manifest to storage %s", err.Error()), 500)
-				return
-			}
-
-			// 2. make formula to decompress data
-			formula := NewFormula(wasmDoi, glueDoi, map[string]string{"CompressedData": compressedDataManifest.Doi.SHA256})
-
-			// 3. add formula to manifest
-			dataManifest := generateManifest(buf.Bytes())
-			newManifest, err := AddFormulaToManifest(dataManifest, formula, fh.Filename)
-			if err != nil {
-				http.Error(w, fmt.Sprintf("failed to add formula to manifest %s", err.Error()), 500)
-				return
-			}
-
-			m, _ := newManifest.ToJSON()
-
-			w.Write([]byte(fmt.Sprintln(fh.Filename)))
-			w.Write([]byte(fmt.Sprintln(r.Header.Get("Origin") + "/search?doi=" + newManifest.Doi.SHA256)))
-			w.Write([]byte(fmt.Sprintln(string(m))))
-			w.Write([]byte(fmt.Sprintln()))
 		}
 
 	default:
