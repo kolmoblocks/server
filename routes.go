@@ -14,7 +14,7 @@ type Formula struct {
 }
 
 // NewFormula creating with params each of them is simple manifest (only doi)
-func NewFormula(wasmDoi string, glueDoi string, params map[string]string) *Formula {
+func NewFormula(wasmDoi string, glueDoi string, params map[string]string) Formula {
 	newFormula := new(Formula)
 
 	newFormula.Actor = make(map[string]Manifest)
@@ -43,7 +43,7 @@ func NewFormula(wasmDoi string, glueDoi string, params map[string]string) *Formu
 		}
 	}
 
-	return newFormula
+	return *newFormula
 }
 
 // Manifest struct
@@ -55,8 +55,8 @@ type Manifest struct {
 }
 
 // AddFormula for adding formula to manifest
-func (m *Manifest) AddFormula(formula *Formula) {
-	m.Formulas = append(m.Formulas, *formula)
+func (m *Manifest) AddFormula(formula Formula) {
+	m.Formulas = append(m.Formulas, formula)
 }
 
 // ToJSON for converting manifest to JSON
@@ -78,7 +78,7 @@ func NewRouter() *mux.Router {
 
 	r.HandleFunc("/upload", upload)
 
-	r.HandleFunc("/upload_json", uploadJSON)
+	//r.HandleFunc("/upload_json", uploadJSON)
 
 	r.HandleFunc("/search", search).Methods("GET")
 

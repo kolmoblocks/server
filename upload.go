@@ -36,14 +36,14 @@ func generateManifest(rawData []byte) Manifest {
 
 //insertHash(m Manifest, raw []byte, c redis.Conn) error
 //  Inserts a hash into redis with fields json: Manifest, raw: []byte
-func insertHash(m Manifest, raw []byte, c redis.Conn) error {
+func insertHash(m Manifest, raw []byte, c redis.Conn, description string) error {
 	//Create json string by marshaling Manifest
 	jsonData, err := m.ToJSON()
 	if err != nil {
 		return err
 	}
 
-	_, err = c.Do("HMSET", m.Doi.SHA256, "json", string(jsonData), "raw", raw)
+	_, err = c.Do("HMSET", m.Doi.SHA256, "manifest", string(jsonData), "raw", raw, "description", description)
 	if err != nil {
 		return errors.New("Failed to insert" + m.Doi.SHA256)
 	}
@@ -160,8 +160,8 @@ func upload(w http.ResponseWriter, r *http.Request) {
 
 		r.ParseMultipartForm(32 << 20) // 32MB is the default used by FormFile
 		fhs := r.MultipartForm.File["files"]
-		buf := bytes.NewBuffer(nil)
 		for _, fh := range fhs {
+			buf := bytes.NewBuffer(nil)
 			file, err := fh.Open()
 			if err != nil {
 				http.Error(w, "Failed to read file", 500)
@@ -180,7 +180,7 @@ func upload(w http.ResponseWriter, r *http.Request) {
 			}
 			//Generates manifest of the uploaded file and inserts it into redis db
 			m := generateManifest(buf.Bytes())
-			err = insertHash(m, buf.Bytes(), conn)
+			err = insertHash(m, buf.Bytes(), conn, fh.Filename)
 			if err != nil {
 				http.Error(w, "failed to set key in redis", 500)
 				return
@@ -264,40 +264,17 @@ func uploadZstd(w http.ResponseWriter, r *http.Request) {
 
 	case "POST":
 
-		// check redis connected
-		conn := redisPool.Get()
-		defer conn.Close()
-		if err := ping(conn); err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
-
-		// check wasm:unzstd stored in server
-		data, err := conn.Do("hgetall", "wasm:unzstd")
+		wasmDoi, glueDoi, err := GetWasmInfo("wasm:unzstd")
 		if err != nil {
-			http.Error(w, fmt.Sprintf("wasm:unzstd not found in server %s", err.Error()), 404)
+			http.Error(w, fmt.Sprintf("error geting information for wasm %s", err.Error()), 500)
 			return
 		}
-
-		var e error
-		smData, err := redis.StringMap(data, e)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("error data format for wasm:unzstd %s", err.Error()), 500)
-			return
-		}
-
-		wasmDoi, present := smData["wasmDoi"]
-		if !present {
-			http.Error(w, "can't find 'wasmDoi' field for wasm:unzstd", 500)
-			return
-		}
-
-		glueDoi, present := smData["glueDoi"]
 
 		r.ParseMultipartForm(32 << 20) // 32MB is the default used by FormFile
 		fhs := r.MultipartForm.File["files"]
-		buf := bytes.NewBuffer(nil)
 		for _, fh := range fhs {
+
+			buf := bytes.NewBuffer(nil)
 
 			file, err := fh.Open()
 			if err != nil {
@@ -310,37 +287,32 @@ func uploadZstd(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			// compress data
+			// 1. compress data by ZSTD and insert it to storage with manifest
 			compressedData := gozstd.Compress(nil, buf.Bytes())
-
-			// generate manifest for compressed data!
 			compressedDataManifest := generateManifest(compressedData)
-
-			// upload compressed data and manifest to server
-			err = insertHash(compressedDataManifest, compressedData, conn)
+			err = InsertDataWithManifest(compressedData, compressedDataManifest, fmt.Sprintf("%s compressed by ZSTD", fh.Filename))
 			if err != nil {
 				http.Error(w, fmt.Sprintf("failed to insert compressed data and manifest to storage %s", err.Error()), 500)
 				return
 			}
 
-			// generate manifest for data from uploaded file
+			// 2. make formula to decompress data
+			formula := NewFormula(wasmDoi, glueDoi, map[string]string{"CompressedData": compressedDataManifest.Doi.SHA256})
+
+			// 3. add formula to manifest
 			dataManifest := generateManifest(buf.Bytes())
-
-			params := map[string]string{
-				"Arg1": compressedDataManifest.Doi.SHA256,
-			}
-
-			dataManifest.AddFormula(NewFormula(wasmDoi, glueDoi, params))
-
-			// upload manifest to server
-			m, _ := dataManifest.ToJSON()
-			_, err = insertJSON(m, conn)
+			newManifest, err := AddFormulaToManifest(dataManifest, formula, fh.Filename)
 			if err != nil {
-				http.Error(w, fmt.Sprintf("failed to insert data manifest to storage %s", err.Error()), 500)
+				http.Error(w, fmt.Sprintf("failed to add formula to manifest %s", err.Error()), 500)
 				return
 			}
 
-			http.Error(w, string(m), 500)
+			m, _ := newManifest.ToJSON()
+
+			w.Write([]byte(fmt.Sprintln(fh.Filename)))
+			w.Write([]byte(fmt.Sprintln(r.Header.Get("Origin") + "/search?doi=" + newManifest.Doi.SHA256)))
+			w.Write([]byte(fmt.Sprintln(string(m))))
+			w.Write([]byte(fmt.Sprintln()))
 		}
 
 	default:

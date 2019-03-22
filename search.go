@@ -37,9 +37,9 @@ func search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//Sets content type in http header and retrieves json field of hash in redis db
-	w.Header().Set("Content-Type", "application/json")
+	//w.Header().Set("Content-Type", "application/json")
 	doi := r.FormValue("doi")
-	data, err := redis.Bytes(conn.Do("HGET", doi, "json"))
+	data, err := redis.Bytes(conn.Do("HGET", doi, "manifest"))
 	if err != nil {
 		http.Error(w, "data object not found", 404)
 		return

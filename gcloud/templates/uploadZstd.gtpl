@@ -1,10 +1,10 @@
 <html>
 <head>
-       <title>Upload file with Zstd compression</title>
+       <title>Upload files and compress with Zstd</title>
 </head>
 <body>
 <form enctype="multipart/form-data" action="/upload/zstd" method="post">
-    File: <input type="file" name="files"/>
+    Files to upload and compress with Zstd: <input type="file" name="files" multiple/>
     <input type="submit" value="Upload" />
 </form>
 </body>
