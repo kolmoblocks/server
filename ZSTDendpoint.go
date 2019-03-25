@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"text/template"
+	"time"
 
 	"github.com/valyala/gozstd"
 )
@@ -92,7 +93,7 @@ func updateZstdDictionary(w http.ResponseWriter, r *http.Request) {
 
 	case "GET":
 
-		wasmDoi, _, err := GetWasmInfo("wasm:unzstd")
+		wasmDoi, glueDoi, err := GetWasmInfo("wasm:unzstd")
 		if err != nil {
 			http.Error(w, fmt.Sprintf("error geting information for wasm %s", err.Error()), 500)
 			return
@@ -106,8 +107,13 @@ func updateZstdDictionary(w http.ResponseWriter, r *http.Request) {
 
 		// collect all decompressed data for generating dictionary
 		var allDecompressedData [][]byte
+
 		var allCompressedData map[string][]byte
 		allCompressedData = make(map[string][]byte)
+
+		var allManifests map[string]Manifest
+		allManifests = make(map[string]Manifest)
+
 		var allCDsize map[string]int
 		allCDsize = make(map[string]int)
 
@@ -139,6 +145,7 @@ func updateZstdDictionary(w http.ResponseWriter, r *http.Request) {
 						allDecompressedData = append(allDecompressedData, decData)
 
 						allCompressedData[manifest.Doi.SHA256] = decData
+						allManifests[manifest.Doi.SHA256] = manifest
 						allCDsize[manifest.Doi.SHA256] = len(rawData)
 
 						cr := (float32(len(decData))/float32(len(rawData)) - 1) * 100
@@ -153,9 +160,16 @@ func updateZstdDictionary(w http.ResponseWriter, r *http.Request) {
 
 		}
 
-		// generate dictionary
+		// generate dictionary and insert it to storage
 		dictionary := gozstd.BuildDict(allDecompressedData, 100*1024)
-		w.Write([]byte(fmt.Sprintf("\nNew dictionary generated: size %v\n\n", len(dictionary))))
+
+		dictionaryManifest := CreateManifestForRawData(dictionary)
+		err = InsertDataWithManifest(dictionary, dictionaryManifest, "Dictionary for SZTD ("+time.Now().String()+")")
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to insert dictionary data and manifest to storage %s", err.Error()), 500)
+			return
+		}
+		w.Write([]byte(fmt.Sprintf("\nNew dictionary generated (%s): size %v\n\n", dictionaryManifest.Doi.SHA256, len(dictionary))))
 
 		// compress data with dictionary and add new formula to manifests
 		dictForCompression, err := gozstd.NewCDictLevel(dictionary, compressionLevel)
@@ -171,14 +185,32 @@ func updateZstdDictionary(w http.ResponseWriter, r *http.Request) {
 
 			compressedDataWithDictionary := gozstd.CompressDict(nil, rawData, dictForCompression)
 
+			manifest, _ := allManifests[doi]
 			size, _ := allCDsize[doi]
 
 			cr := (float32(size)/float32(len(compressedDataWithDictionary)) - 1) * 100
 
 			if len(compressedDataWithDictionary) <= size {
+
+				compressedDataManifest := CreateManifestForRawData(compressedDataWithDictionary)
+				err = InsertDataWithManifest(compressedDataWithDictionary, compressedDataManifest, "")
+				if err != nil {
+					http.Error(w, fmt.Sprintf("failed to insert compressed data and manifest to storage %s", err.Error()), 500)
+					return
+				}
+
+				formula := NewFormula(wasmDoi, glueDoi, map[string]string{"CompressedData": compressedDataManifest.Doi.SHA256, "Dictionary": dictionaryManifest.Doi.SHA256})
+
+				_, err := AddFormulaToManifest(manifest, formula, "")
+				if err != nil {
+					http.Error(w, fmt.Sprintf("failed to add formula to manifest %s", err.Error()), 500)
+					return
+				}
+
 				w.Write([]byte(fmt.Sprintf("%s : %v -> %v (%f)\n", doi, size, len(compressedDataWithDictionary), cr)))
+
 			} else {
-				w.Write([]byte(fmt.Sprintf("%s : %v -> %v\n", doi, size, len(compressedDataWithDictionary))))
+				w.Write([]byte(fmt.Sprintf("%s : %v -> %v\n", doi, manifest.Size, len(compressedDataWithDictionary))))
 			}
 		}
 
