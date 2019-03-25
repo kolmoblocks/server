@@ -10,6 +10,8 @@ import (
 	"github.com/valyala/gozstd"
 )
 
+const compressionLevel = 19
+
 func uploadZstd(w http.ResponseWriter, r *http.Request) {
 
 	switch method := r.Method; method {
@@ -31,6 +33,8 @@ func uploadZstd(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		var totalOut = ""
+
 		r.ParseMultipartForm(32 << 20) // 32MB is the default used by FormFile
 		fhs := r.MultipartForm.File["files"]
 		for _, fh := range fhs {
@@ -49,7 +53,7 @@ func uploadZstd(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// 1. compress data by ZSTD and insert it to storage with manifest
-			compressedData := gozstd.Compress(nil, buf.Bytes())
+			compressedData := gozstd.CompressLevel(nil, buf.Bytes(), compressionLevel)
 			compressedDataManifest := CreateManifestForRawData(compressedData)
 			err = InsertDataWithManifest(compressedData, compressedDataManifest, fmt.Sprintf("%s compressed by ZSTD", fh.Filename))
 			if err != nil {
@@ -70,11 +74,12 @@ func uploadZstd(w http.ResponseWriter, r *http.Request) {
 
 			m, _ := newManifest.ToJSON()
 
-			w.Write([]byte(fmt.Sprintln(fh.Filename)))
-			w.Write([]byte(fmt.Sprintln(r.Header.Get("Origin") + "/search?doi=" + newManifest.Doi.SHA256)))
-			w.Write([]byte(fmt.Sprintln(string(m))))
-			w.Write([]byte(fmt.Sprintln()))
+			totalOut = totalOut + fmt.Sprintf("%s (%s) : %v -> %v\n", fh.Filename, dataManifest.Doi.SHA256, len(buf.Bytes()), len(compressedData))
+			w.Write([]byte(fmt.Sprintf("%s\n", string(m))))
 		}
+
+		w.Write([]byte("\nZSTD compression stats:\n(filename (DOI) : original size -> ZSTD compression size)\n\n"))
+		w.Write([]byte(totalOut))
 
 	default:
 		fmt.Fprintf(w, "Method %s not supported", method)
@@ -99,8 +104,14 @@ func updateZstdDictionary(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// collect all decompressed data for generating dictionary
 		var allDecompressedData [][]byte
+		var allCompressedData map[string][]byte
+		allCompressedData = make(map[string][]byte)
+		var allCDsize map[string]int
+		allCDsize = make(map[string]int)
 
+		w.Write([]byte("ZSTD compression stats:\n(DOI : original size -> ZSTD compression size)\n\n"))
 		for _, manifest := range manifests {
 
 			for _, formula := range manifest.Formulas {
@@ -108,6 +119,7 @@ func updateZstdDictionary(w http.ResponseWriter, r *http.Request) {
 				cd, CDpresent := formula.Parameters["CompressedData"]
 				_, Dpresent := formula.Parameters["Dictionary"]
 
+				// getting formulas for decompress data
 				if CDpresent && !Dpresent {
 
 					rawData, err := GetDataByDoi(cd.Doi.SHA256)
@@ -126,12 +138,48 @@ func updateZstdDictionary(w http.ResponseWriter, r *http.Request) {
 
 						allDecompressedData = append(allDecompressedData, decData)
 
-						w.Write([]byte(fmt.Sprintf("%s : %v -> %v\n", cd.Doi.SHA256, len(rawData), len(decData))))
+						allCompressedData[manifest.Doi.SHA256] = decData
+						allCDsize[manifest.Doi.SHA256] = len(rawData)
+
+						cr := (float32(len(decData))/float32(len(rawData)) - 1) * 100
+
+						w.Write([]byte(fmt.Sprintf("%s : %v -> %v (%f)\n", manifest.Doi.SHA256, len(decData), len(rawData), cr)))
 
 					}
 				}
+
+				break
 			}
 
+		}
+
+		// generate dictionary
+		dictionary := gozstd.BuildDict(allDecompressedData, 100*1024)
+		w.Write([]byte(fmt.Sprintf("\nNew dictionary generated: size %v\n\n", len(dictionary))))
+
+		// compress data with dictionary and add new formula to manifests
+		dictForCompression, err := gozstd.NewCDictLevel(dictionary, compressionLevel)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("cannot create CDict: %s", err.Error()), 500)
+			return
+		}
+		defer dictForCompression.Release()
+
+		w.Write([]byte("ZSTD compression with dictionary stats:\n(DOI : ZSTD compression size -> ZSTD + dictionary compression size)\n\n"))
+
+		for doi, rawData := range allCompressedData {
+
+			compressedDataWithDictionary := gozstd.CompressDict(nil, rawData, dictForCompression)
+
+			size, _ := allCDsize[doi]
+
+			cr := (float32(size)/float32(len(compressedDataWithDictionary)) - 1) * 100
+
+			if len(compressedDataWithDictionary) <= size {
+				w.Write([]byte(fmt.Sprintf("%s : %v -> %v (%f)\n", doi, size, len(compressedDataWithDictionary), cr)))
+			} else {
+				w.Write([]byte(fmt.Sprintf("%s : %v -> %v\n", doi, size, len(compressedDataWithDictionary))))
+			}
 		}
 
 	case "POST":

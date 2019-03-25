@@ -235,7 +235,7 @@ func GetManifestsWithActorDoi(actorDoi string) (manifests []Manifest, err error)
 				if actorDoi == formula.Actor["wasm"].Doi.SHA256 {
 
 					manifests = append(manifests, manifest)
-					continue
+					break
 				}
 			}
 		}
