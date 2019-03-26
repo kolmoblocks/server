@@ -15,6 +15,8 @@ func NewRouter() *mux.Router {
 
 	r.HandleFunc("/upload/zstd/dictionary", updateZstdDictionary)
 
+	r.HandleFunc("/upload/zstd/stat", statZstd)
+
 	r.HandleFunc("/upload", upload)
 
 	r.HandleFunc("/search", search).Methods("GET")

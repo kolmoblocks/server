@@ -160,11 +160,16 @@ func updateZstdDictionary(w http.ResponseWriter, r *http.Request) {
 
 		}
 
+		if len(allDecompressedData) <= 1 {
+			http.Error(w, fmt.Sprintf("dictionary will not generated (no data)"), 500)
+			return
+		}
+
 		// generate dictionary and insert it to storage
 		dictionary := gozstd.BuildDict(allDecompressedData, 100*1024)
 
 		dictionaryManifest := CreateManifestForRawData(dictionary)
-		err = InsertDataWithManifest(dictionary, dictionaryManifest, "Dictionary for SZTD ("+time.Now().String()+")")
+		err = InsertDataWithManifest(dictionary, dictionaryManifest, "Dictionary for SZTD ("+time.Now().Format(time.RFC822)+")")
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to insert dictionary data and manifest to storage %s", err.Error()), 500)
 			return
@@ -193,7 +198,7 @@ func updateZstdDictionary(w http.ResponseWriter, r *http.Request) {
 			if len(compressedDataWithDictionary) <= size {
 
 				compressedDataManifest := CreateManifestForRawData(compressedDataWithDictionary)
-				err = InsertDataWithManifest(compressedDataWithDictionary, compressedDataManifest, "")
+				err = InsertDataWithManifest(compressedDataWithDictionary, compressedDataManifest, "Data compressed with dictionary")
 				if err != nil {
 					http.Error(w, fmt.Sprintf("failed to insert compressed data and manifest to storage %s", err.Error()), 500)
 					return
@@ -210,13 +215,119 @@ func updateZstdDictionary(w http.ResponseWriter, r *http.Request) {
 				w.Write([]byte(fmt.Sprintf("%s : %v -> %v (%f)\n", doi, size, len(compressedDataWithDictionary), cr)))
 
 			} else {
-				w.Write([]byte(fmt.Sprintf("%s : %v -> %v\n", doi, manifest.Size, len(compressedDataWithDictionary))))
+				w.Write([]byte(fmt.Sprintf("%s : %v -> %v\n", doi, size, len(compressedDataWithDictionary))))
 			}
 		}
 
 	case "POST":
 
 		w.Write([]byte("post"))
+
+	default:
+		fmt.Fprintf(w, "Method %s not supported", method)
+	}
+}
+
+type dictStat struct {
+	allSize    int
+	ZSTDSize   int
+	filesCount int
+}
+
+func statZstd(w http.ResponseWriter, r *http.Request) {
+
+	switch method := r.Method; method {
+
+	case "GET":
+
+		wasmDoi, _, err := GetWasmInfo("wasm:unzstd")
+		if err != nil {
+			http.Error(w, fmt.Sprintf("error geting information for wasm %s", err.Error()), 500)
+			return
+		}
+
+		manifests, err := GetManifestsWithActorDoi(wasmDoi)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("error geting manifests for wasm %s", err.Error()), 500)
+			return
+		}
+
+		var allDictionaries map[string]dictStat
+		allDictionaries = make(map[string]dictStat)
+
+		var allSize = 0
+		var allZSTDSize = 0
+		var filesCount = 0
+
+		for _, manifest := range manifests {
+
+			allSize = allSize + manifest.Size
+			filesCount = filesCount + 1
+
+			for _, formula := range manifest.Formulas {
+
+				cd, CDpresent := formula.Parameters["CompressedData"]
+
+				d, Dpresent := formula.Parameters["Dictionary"]
+
+				if CDpresent && Dpresent {
+
+					stat := allDictionaries[d.Doi.SHA256]
+
+					cdm, err := GetManifestByDoi(cd.Doi.SHA256)
+					if err != nil {
+						http.Error(w, fmt.Sprintf("error geting manifests for compressed data %s", err.Error()), 500)
+						return
+					}
+
+					stat.ZSTDSize = stat.ZSTDSize + cdm.Size
+					stat.allSize = stat.allSize + manifest.Size
+					stat.filesCount = stat.filesCount + 1
+
+					allDictionaries[d.Doi.SHA256] = stat
+				}
+
+				if CDpresent && !Dpresent {
+
+					cdm, err := GetManifestByDoi(cd.Doi.SHA256)
+					if err != nil {
+						http.Error(w, fmt.Sprintf("error geting manifests for compressed data %s", err.Error()), 500)
+						return
+					}
+
+					allZSTDSize = allZSTDSize + cdm.Size
+				}
+			}
+		}
+
+		// ZSTD stat
+		w.Write([]byte(fmt.Sprintf("ZSTD stat for %v files:\n", filesCount)))
+		w.Write([]byte(fmt.Sprintf("Raw size, bytes -  %v\n", allSize)))
+		w.Write([]byte(fmt.Sprintf("Compressed size, bytes - %v\n", allZSTDSize)))
+		w.Write([]byte(fmt.Sprintf("Disk savings, bytes - %v\n", allSize-allZSTDSize)))
+		w.Write([]byte(fmt.Sprintf("Traffic savings, bytes - %v\n\n", allSize-allZSTDSize)))
+
+		// dictionary stat
+		for dictionaryDoi, dictStat := range allDictionaries {
+
+			cdm, err := GetManifestByDoi(dictionaryDoi)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("error geting manifests for compressed data %s", err.Error()), 500)
+				return
+			}
+
+			descr, err := GetDescriptionByDoi(dictionaryDoi)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("error geting description %s", err.Error()), 500)
+				return
+			}
+
+			w.Write([]byte(fmt.Sprintf("ZSTD+dictionary stat for %v files (%s, %v)\n", dictStat.filesCount, descr, cdm.Size)))
+			w.Write([]byte(fmt.Sprintf("Raw size, bytes -  %v\n", dictStat.allSize)))
+			w.Write([]byte(fmt.Sprintf("Compressed size, bytes - %v\n", dictStat.ZSTDSize)))
+			w.Write([]byte(fmt.Sprintf("Disk savings, bytes - %v\n", dictStat.allSize-dictStat.ZSTDSize)))
+			w.Write([]byte(fmt.Sprintf("Traffic savings, bytes - %v\n\n", dictStat.allSize-dictStat.ZSTDSize-cdm.Size)))
+		}
 
 	default:
 		fmt.Fprintf(w, "Method %s not supported", method)

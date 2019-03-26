@@ -244,3 +244,63 @@ func GetManifestsWithActorDoi(actorDoi string) (manifests []Manifest, err error)
 
 	return manifests, nil
 }
+
+// GetManifestByDoi for getting manifest by doi
+func GetManifestByDoi(doi string) (manifest *Manifest, err error) {
+	connection := redisPool.Get()
+	defer connection.Close()
+	if err := ping(connection); err != nil {
+		return nil, fmt.Errorf("error check connection with storage %s", err.Error())
+	}
+
+	data, err := connection.Do("hgetall", doi)
+	if err != nil {
+		return nil, fmt.Errorf("%s not found in server %s", doi, err.Error())
+	}
+
+	var e error
+	smData, err := redis.StringMap(data, e)
+	if err != nil {
+		return nil, fmt.Errorf("%s error data format %s", doi, err.Error())
+	}
+
+	strManifest, present := smData["manifest"]
+	if !present {
+		return nil, fmt.Errorf("can't find 'manifest' field for %s", doi)
+	}
+
+	var parsedManifest Manifest
+	err = json.Unmarshal([]byte(strManifest), &parsedManifest)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing manifest as json %s", err.Error())
+	}
+
+	return &parsedManifest, nil
+}
+
+// GetDescriptionByDoi for getting description by doi
+func GetDescriptionByDoi(doi string) (description string, err error) {
+	connection := redisPool.Get()
+	defer connection.Close()
+	if err := ping(connection); err != nil {
+		return "", fmt.Errorf("error check connection with storage %s", err.Error())
+	}
+
+	data, err := connection.Do("hgetall", doi)
+	if err != nil {
+		return "", fmt.Errorf("%s not found in server %s", doi, err.Error())
+	}
+
+	var e error
+	smData, err := redis.StringMap(data, e)
+	if err != nil {
+		return "", fmt.Errorf("%s error data format %s", doi, err.Error())
+	}
+
+	descr, present := smData["descr"]
+	if !present {
+		return "", fmt.Errorf("can't find 'descr' field for %s", doi)
+	}
+
+	return descr, nil
+}
