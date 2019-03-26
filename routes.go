@@ -11,6 +11,8 @@ func NewRouter() *mux.Router {
 
 	r := mux.NewRouter()
 
+	initZSTDEndPoint()
+
 	r.HandleFunc("/upload/zstd", uploadZstd)
 
 	r.HandleFunc("/upload/zstd/dictionary", updateZstdDictionary)

@@ -304,3 +304,28 @@ func GetDescriptionByDoi(doi string) (description string, err error) {
 
 	return descr, nil
 }
+
+func initZSTDEndPoint() (err error) {
+
+	connection := redisPool.Get()
+	defer connection.Close()
+	if err := ping(connection); err != nil {
+		return fmt.Errorf("error check connection with storage %s", err.Error())
+	}
+
+	var name = "wasm:unzstd"
+	wasm, err := connection.Do("hgetall", name)
+	if err != nil {
+		return fmt.Errorf("%s not found in server %s", name, err.Error())
+	}
+
+	var e error
+	_, err = redis.StringMap(wasm, e)
+	if err != nil {
+		connection.Do("hset", name, "descr", "Wasm for decompress Zstd files with and without dictionary. Use this assembly with js-glue code!")
+		connection.Do("hset", name, "wasmDoi", "69B7A38156F7B5F5C57DFF70337EB95077695873023A08E1B718E434B1FBDCFF")
+		connection.Do("hset", name, "glueDoi", "1F4AC1370D24CBF58D62CC002D859AB7B52B507617C2D81996CB2CAF171533DD")
+	}
+
+	return nil
+}
