@@ -169,7 +169,7 @@ func updateZstdDictionary(w http.ResponseWriter, r *http.Request) {
 		dictionary := gozstd.BuildDict(allDecompressedData, 100*1024)
 
 		dictionaryManifest := CreateManifestForRawData(dictionary)
-		err = InsertDataWithManifest(dictionary, dictionaryManifest, "Dictionary for SZTD ("+time.Now().Format(time.RFC822)+")")
+		err = InsertDataWithManifest(dictionary, dictionaryManifest, "Dictionary for SZTD ("+time.Now().Format(time.StampMilli)+")")
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to insert dictionary data and manifest to storage %s", err.Error()), 500)
 			return
